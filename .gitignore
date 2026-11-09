@@ -1,0 +1,16 @@
+int333-key.pem
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+
+# Private keys
+*.pem
+*.key
+
+# Environment variables
+.env

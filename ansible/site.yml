@@ -1,0 +1,111 @@
+- name: Configure web server with Puppet
+  hosts: web
+  become: true
+  tags: web
+  tasks:
+    - name: Add the official Puppet 8 repository
+      apt:
+        deb: https://apt.puppet.com/puppet8-release-jammy.deb
+
+    - name: Install Puppet
+      apt:
+        name: puppet-agent
+        state: present
+        update_cache: yes
+
+    - name: Make sure the Puppet module directory exists
+      file:
+        path: /etc/puppetlabs/code/modules
+        state: directory
+
+    - name: Copy Puppet module to the web server
+      copy:
+        src: ../puppet/modules/webserver
+        dest: /etc/puppetlabs/code/modules/
+
+    - name: Apply the manifest (puppet apply)
+      command: /opt/puppetlabs/bin/puppet apply -e "include webserver"
+      register: puppet_out
+      changed_when: "'Notice' in puppet_out.stdout"
+
+- name: Install and configure Nagios
+  hosts: monitor
+  become: true
+  tags: monitor
+  vars:
+    nagios_admin_pass: "Admin@123"
+  tasks:
+    - block:
+        - name: Install Nagios and plugins
+          apt:
+            name: [nagios4, nagios-plugins-basic, apache2-utils]
+            state: present
+            update_cache: yes
+
+        - name: Set the web UI password
+          command: htpasswd -bc /etc/nagios4/htpasswd.users nagiosadmin {{ nagios_admin_pass }}
+          no_log: true
+          changed_when: false
+
+        - name: Remove the private-IP-only restriction on the web UI
+          lineinfile:
+            path: /etc/apache2/conf-available/nagios4-cgi.conf
+            regexp: 'Require ip'
+            state: absent
+          notify: restart apache
+
+        - name: Enable Apache CGI module
+          command: a2enmod cgi
+          register: cgi_out
+          changed_when: "'Enabling module' in cgi_out.stdout"
+          notify: restart apache
+
+        - name: Require a login for the Nagios pages
+          copy:
+            dest: /etc/apache2/conf-available/nagios4-auth.conf
+            content: |
+              <LocationMatch "^/(nagios4|cgi-bin/nagios4)">
+                  AuthType Basic
+                  AuthName "Nagios4 Access"
+                  AuthUserFile /etc/nagios4/htpasswd.users
+                  Require valid-user
+              </LocationMatch>
+          notify: restart apache
+
+        - name: Enable the login rule
+          command: a2enconf nagios4-auth
+          register: auth_out
+          changed_when: "'Enabling conf' in auth_out.stdout"
+          notify: restart apache
+
+        - name: Turn on authentication in the Nagios CGIs
+          lineinfile:
+            path: /etc/nagios4/cgi.cfg
+            regexp: '^use_authentication='
+            line: use_authentication=1
+          notify: restart apache
+
+        - name: Add web host and services to Nagios
+          template:
+            src: web_host.cfg.j2
+            dest: /etc/nagios4/conf.d/web_host.cfg
+          notify: restart nagios
+
+        - name: Enable and start Nagios
+          service:
+            name: nagios4
+            state: started
+            enabled: yes
+      rescue:
+        - debug:
+            msg: "Nagios setup failed, check the apt logs"
+
+  handlers:
+    - name: restart nagios
+      service:
+        name: nagios4
+        state: restarted
+    - name: restart apache
+      service:
+        name: apache2
+        state: restarted

@@ -1,0 +1,54 @@
+define host {
+  name                   int333-host
+  register               0
+  max_check_attempts     3
+  check_command          check-host-alive
+  check_period           24x7
+  check_interval         1
+  retry_interval         1
+  notification_interval  30
+  notification_period    24x7
+  notification_options   d,u,r
+  contact_groups         admins
+}
+
+define service {
+  name                   int333-service
+  register               0
+  max_check_attempts     3
+  check_interval         1
+  retry_interval         1
+  check_period           24x7
+  notification_interval  30
+  notification_period    24x7
+  notification_options   w,u,c,r
+  contact_groups         admins
+}
+
+define host {
+  use        int333-host
+  host_name  web
+  alias      Puppet-managed web server
+  address    {{ web_private_ip }}
+}
+
+define service {
+  use                 int333-service
+  host_name           web
+  service_description HTTP
+  check_command       check_http
+}
+
+define service {
+  use                 int333-service
+  host_name           web
+  service_description SSH
+  check_command       check_ssh
+}
+
+define service {
+  use                 int333-service
+  host_name           web
+  service_description PING
+  check_command       check_ping!100.0,20%!500.0,60%
+}

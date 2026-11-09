@@ -1,0 +1,5 @@
+<%- | String $title | -%>
+<h1><%= $title %></h1>
+<p>Host: <%= $facts['networking']['hostname'] %></p>
+<p>OS: <%= $facts['os']['name'] %> <%= $facts['os']['release']['full'] %></p>
+<p>Managed by Puppet</p>
